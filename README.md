@@ -3,10 +3,785 @@ What's on your mind?
 Ask LikhonAI anything - from coding help to creative inspiration.
 *Getting Started
 First you need to install the module, we ship exclusively through npm so you need that installed and then add xterm.js as a dependency by running:
+Response Stream
+A component for displaying text with streaming animations, perfect for chat interfaces, AI responses, or any text that should appear progressively.
 
+Examples
+Typewriter Mode
+The default mode that types out text character by character, simulating a typing effect.
+
+Preview
+
+Code
+
+import { ResponseStream } from "@/components/prompt-kit/response-stream"
+
+export function ResponseStreamTypewriter() {
+  const text = `This text is being typed out character by character, simulating a typewriter effect. This is the default mode of the ResponseStream component. You can use speed to control the speed or as to control the rendering element. Or onComplete to run a function when the text is fully typed. Check the other props too!
+    `
+
+  return (
+    <div className="w-full min-w-full">
+      <ResponseStream
+        textStream={text}
+        mode="typewriter"
+        speed={20}
+        className="text-sm"
+      />
+    </div>
+  )
+}
+Fade Mode
+The fade mode reveals text word by word with a smooth fade-in animation.
+
+Preview
+
+Code
+
+import { ResponseStream } from "@/components/prompt-kit/response-stream"
+
+export function ResponseStreamFade() {
+  const text = `This text is fading in word by word. The fade mode creates a smooth and elegant text reveal. You can customize the fadeDuration but also the segmentDelay to control the speed of the animation.`
+
+  return (
+    <div className="w-full min-w-full">
+      <ResponseStream
+        textStream={text}
+        mode="fade"
+        className="text-sm"
+        fadeDuration={1200}
+      />
+    </div>
+  )
+}
+With Markdown
+ResponseStream can be combined with the Markdown component to create rich, animated content, for that you need to use the useTextStream hook directly.
+
+Note: If you want to use mode="fade", you need to manually render the segments with appropriate CSS animations. It can be hard to get it done with markdown, the way is to write a custom remarkPlugins. We have a demo but it's a bit too experimental to be included here, happy to receive a PR if you have a good solution.
+
+Preview
+
+Code
+
+"use client"
+
+import { Markdown } from "@/components/prompt-kit/markdown"
+import { useTextStream } from "@/components/prompt-kit/response-stream"
+import { useEffect } from "react"
+
+export function ResponseStreamWithMarkdown() {
+  const markdownText = `## Streaming Markdown
+
+This example shows how to combine **useTextStream** with *Markdown* rendering.
+
+- The text is processed by useTextStream
+- Then rendered directly with Markdown
+- Perfect for AI responses with formatting
+
+\`\`\`js
+// Code blocks work too!
+function example() {
+  return "Hello world";
+}
+\`\`\`
+`
+
+  const { displayedText, startStreaming } = useTextStream({
+    textStream: markdownText,
+    mode: "typewriter",
+    speed: 30,
+  })
+
+  useEffect(() => {
+    startStreaming()
+  }, [startStreaming])
+
+  return (
+    <div className="w-full min-w-full">
+      <Markdown className="prose prose-sm dark:prose-invert prose-h2:mt-0! prose-h2:scroll-m-0!">
+        {displayedText}
+      </Markdown>
+    </div>
+  )
+}
+Using the useTextStream Hook with fade mode
+When using the useTextStream hook with fade mode, you need to manually render the segments with appropriate CSS animations.
+
+Preview
+
+Code
+
+"use client"
+
+import { useTextStream } from "@/components/prompt-kit/response-stream"
+import { cn } from "@/lib/utils"
+
+export function UseTextStreamExample() {
+  const text = `This example demonstrates direct use of the useTextStream hook with fade animation. Each word fades in sequentially, creating a smooth reading experience. The hook doesn't interfere with the UI rendering, so you can use it in combination with other components. You can customize the fadeIn effect as you want. You can use getFadeDuration or getSegmentDelay to control the animation speed. Or you can just set speed and control everything with CSS.`
+
+  const { segments } = useTextStream({
+    textStream: text,
+    mode: "fade",
+    speed: 100,
+  })
+
+  // For fade mode, we need to manually create the CSS and render the segments.
+  const fadeStyle = `
+    @keyframes fadeIn {
+      from { opacity: 0; filter: blur(2px); }
+      to { opacity: 1; filter: blur(0px); }
+    }
+    
+    .custom-fade-segment {
+      display: inline-block;
+      opacity: 0;
+      animation: fadeIn 1000ms ease-out forwards;
+    }
+
+    .custom-fade-segment-space {
+      white-space: pre;
+    }
+  `
+
+  return (
+    <div className="w-full min-w-full">
+      <style>{fadeStyle}</style>
+
+      <div className="min-h-[100px] rounded-md p-4 text-sm">
+        <div className="relative">
+          {segments.map((segment, idx) => {
+            const isWhitespace = /^\s+$/.test(segment.text)
+
+            return (
+              <span
+                key={`${segment.text}-${idx}`}
+                className={cn(
+                  "custom-fade-segment",
+                  isWhitespace && "custom-fade-segment-space"
+                )}
+                style={{
+                  animationDelay: `${idx * 2}ms`,
+                }}
+              >
+                {segment.text}
+              </span>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+Installation
+CLI
+
+Manual
+Copy and paste the following code into your project.
+
+"use client"
+
+import { cn } from "@/lib/utils"
+import React, { useCallback, useEffect, useRef, useState } from "react"
+
+export type Mode = "typewriter" | "fade"
+
+export type UseTextStreamOptions = {
+  textStream: string | AsyncIterable<string>
+  speed?: number
+  mode?: Mode
+  onComplete?: () => void
+  fadeDuration?: number
+  segmentDelay?: number
+  characterChunkSize?: number
+  onError?: (error: unknown) => void
+}
+
+export type UseTextStreamResult = {
+  displayedText: string
+  isComplete: boolean
+  segments: { text: string; index: number }[]
+  getFadeDuration: () => number
+  getSegmentDelay: () => number
+  reset: () => void
+  startStreaming: () => void
+  pause: () => void
+  resume: () => void
+}
+
+function useTextStream({
+  textStream,
+  speed = 20,
+  mode = "typewriter",
+  onComplete,
+  fadeDuration,
+  segmentDelay,
+  characterChunkSize,
+  onError,
+}: UseTextStreamOptions): UseTextStreamResult {
+  const [displayedText, setDisplayedText] = useState("")
+  const [isComplete, setIsComplete] = useState(false)
+  const [segments, setSegments] = useState<{ text: string; index: number }[]>(
+    []
+  )
+
+  const speedRef = useRef(speed)
+  const modeRef = useRef(mode)
+  const currentIndexRef = useRef(0)
+  const animationRef = useRef<number | null>(null)
+  const fadeDurationRef = useRef(fadeDuration)
+  const segmentDelayRef = useRef(segmentDelay)
+  const characterChunkSizeRef = useRef(characterChunkSize)
+  const streamRef = useRef<AbortController | null>(null)
+  const completedRef = useRef(false)
+  const onCompleteRef = useRef(onComplete)
+
+  useEffect(() => {
+    speedRef.current = speed
+    modeRef.current = mode
+    fadeDurationRef.current = fadeDuration
+    segmentDelayRef.current = segmentDelay
+    characterChunkSizeRef.current = characterChunkSize
+  }, [speed, mode, fadeDuration, segmentDelay, characterChunkSize])
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  const getChunkSize = useCallback(() => {
+    if (typeof characterChunkSizeRef.current === "number") {
+      return Math.max(1, characterChunkSizeRef.current)
+    }
+
+    const normalizedSpeed = Math.min(100, Math.max(1, speedRef.current))
+
+    if (modeRef.current === "typewriter") {
+      if (normalizedSpeed < 25) return 1
+      return Math.max(1, Math.round((normalizedSpeed - 25) / 10))
+    } else if (modeRef.current === "fade") {
+      return 1
+    }
+
+    return 1
+  }, [])
+
+  const getProcessingDelay = useCallback(() => {
+    if (typeof segmentDelayRef.current === "number") {
+      return Math.max(0, segmentDelayRef.current)
+    }
+
+    const normalizedSpeed = Math.min(100, Math.max(1, speedRef.current))
+    return Math.max(1, Math.round(100 / Math.sqrt(normalizedSpeed)))
+  }, [])
+
+  const getFadeDuration = useCallback(() => {
+    if (typeof fadeDurationRef.current === "number")
+      return Math.max(10, fadeDurationRef.current)
+
+    const normalizedSpeed = Math.min(100, Math.max(1, speedRef.current))
+    return Math.round(1000 / Math.sqrt(normalizedSpeed))
+  }, [])
+
+  const getSegmentDelay = useCallback(() => {
+    if (typeof segmentDelayRef.current === "number")
+      return Math.max(0, segmentDelayRef.current)
+
+    const normalizedSpeed = Math.min(100, Math.max(1, speedRef.current))
+    return Math.max(1, Math.round(100 / Math.sqrt(normalizedSpeed)))
+  }, [])
+
+  const updateSegments = useCallback((text: string) => {
+    if (modeRef.current === "fade") {
+      try {
+        const segmenter = new Intl.Segmenter(navigator.language, {
+          granularity: "word",
+        })
+        const segmentIterator = segmenter.segment(text)
+        const newSegments = Array.from(segmentIterator).map(
+          (segment, index) => ({
+            text: segment.segment,
+            index,
+          })
+        )
+        setSegments(newSegments)
+      } catch (error) {
+        const newSegments = text
+          .split(/(\s+)/)
+          .filter(Boolean)
+          .map((word, index) => ({
+            text: word,
+            index,
+          }))
+        setSegments(newSegments)
+        onError?.(error)
+      }
+    }
+  }, [])
+
+  const markComplete = useCallback(() => {
+    if (!completedRef.current) {
+      completedRef.current = true
+      setIsComplete(true)
+      onCompleteRef.current?.()
+    }
+  }, [])
+
+  const reset = useCallback(() => {
+    currentIndexRef.current = 0
+    setDisplayedText("")
+    setSegments([])
+    setIsComplete(false)
+    completedRef.current = false
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+  }, [])
+
+  const processStringTypewriter = useCallback(
+    (text: string) => {
+      let lastFrameTime = 0
+
+      const streamContent = (timestamp: number) => {
+        const delay = getProcessingDelay()
+        if (delay > 0 && timestamp - lastFrameTime < delay) {
+          animationRef.current = requestAnimationFrame(streamContent)
+          return
+        }
+        lastFrameTime = timestamp
+
+        if (currentIndexRef.current >= text.length) {
+          markComplete()
+          return
+        }
+
+        const chunkSize = getChunkSize()
+        const endIndex = Math.min(
+          currentIndexRef.current + chunkSize,
+          text.length
+        )
+        const newDisplayedText = text.slice(0, endIndex)
+
+        setDisplayedText(newDisplayedText)
+        if (modeRef.current === "fade") {
+          updateSegments(newDisplayedText)
+        }
+
+        currentIndexRef.current = endIndex
+
+        if (endIndex < text.length) {
+          animationRef.current = requestAnimationFrame(streamContent)
+        } else {
+          markComplete()
+        }
+      }
+
+      animationRef.current = requestAnimationFrame(streamContent)
+    },
+    [getProcessingDelay, getChunkSize, updateSegments, markComplete]
+  )
+
+  const processAsyncIterable = useCallback(
+    async (stream: AsyncIterable<string>) => {
+      const controller = new AbortController()
+      streamRef.current = controller
+
+      let displayed = ""
+
+      try {
+        for await (const chunk of stream) {
+          if (controller.signal.aborted) return
+
+          displayed += chunk
+          setDisplayedText(displayed)
+          updateSegments(displayed)
+        }
+
+        markComplete()
+      } catch (error) {
+        console.error("Error processing text stream:", error)
+        markComplete()
+        onError?.(error)
+      }
+    },
+    [updateSegments, markComplete, onError]
+  )
+
+  const startStreaming = useCallback(() => {
+    reset()
+
+    if (typeof textStream === "string") {
+      processStringTypewriter(textStream)
+    } else if (textStream) {
+      processAsyncIterable(textStream)
+    }
+  }, [textStream, reset, processStringTypewriter, processAsyncIterable])
+
+  const pause = useCallback(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+  }, [])
+
+  const resume = useCallback(() => {
+    if (typeof textStream === "string" && !isComplete) {
+      processStringTypewriter(textStream)
+    }
+  }, [textStream, isComplete, processStringTypewriter])
+
+  useEffect(() => {
+    startStreaming()
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+      if (streamRef.current) {
+        streamRef.current.abort()
+      }
+    }
+  }, [textStream, startStreaming])
+
+  return {
+    displayedText,
+    isComplete,
+    segments,
+    getFadeDuration,
+    getSegmentDelay,
+    reset,
+    startStreaming,
+    pause,
+    resume,
+  }
+}
+
+export type ResponseStreamProps = {
+  textStream: string | AsyncIterable<string>
+  mode?: Mode
+  speed?: number // 1-100, where 1 is slowest and 100 is fastest
+  className?: string
+  onComplete?: () => void
+  as?: keyof React.JSX.IntrinsicElements // Element type to render
+  fadeDuration?: number // Custom fade duration in ms (overrides speed)
+  segmentDelay?: number // Custom delay between segments in ms (overrides speed)
+  characterChunkSize?: number // Custom characters per frame for typewriter mode (overrides speed)
+}
+
+function ResponseStream({
+  textStream,
+  mode = "typewriter",
+  speed = 20,
+  className = "",
+  onComplete,
+  as = "div",
+  fadeDuration,
+  segmentDelay,
+  characterChunkSize,
+}: ResponseStreamProps) {
+  const animationEndRef = useRef<(() => void) | null>(null)
+
+  const {
+    displayedText,
+    isComplete,
+    segments,
+    getFadeDuration,
+    getSegmentDelay,
+  } = useTextStream({
+    textStream,
+    speed,
+    mode,
+    onComplete,
+    fadeDuration,
+    segmentDelay,
+    characterChunkSize,
+  })
+
+  useEffect(() => {
+    animationEndRef.current = onComplete ?? null
+  }, [onComplete])
+
+  const handleLastSegmentAnimationEnd = useCallback(() => {
+    if (animationEndRef.current && isComplete) {
+      animationEndRef.current()
+    }
+  }, [isComplete])
+
+  // fadeStyle is the style for the fade animation
+  const fadeStyle = `
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .fade-segment {
+      display: inline-block;
+      opacity: 0;
+      animation: fadeIn ${getFadeDuration()}ms ease-out forwards;
+    }
+
+    .fade-segment-space {
+      white-space: pre;
+    }
+  `
+
+  const renderContent = () => {
+    switch (mode) {
+      case "typewriter":
+        return <>{displayedText}</>
+
+      case "fade":
+        return (
+          <>
+            <style>{fadeStyle}</style>
+            <div className="relative">
+              {segments.map((segment, idx) => {
+                const isWhitespace = /^\s+$/.test(segment.text)
+                const isLastSegment = idx === segments.length - 1
+
+                return (
+                  <span
+                    key={`${segment.text}-${idx}`}
+                    className={cn(
+                      "fade-segment",
+                      isWhitespace && "fade-segment-space"
+                    )}
+                    style={{
+                      animationDelay: `${idx * getSegmentDelay()}ms`,
+                    }}
+                    onAnimationEnd={
+                      isLastSegment ? handleLastSegmentAnimationEnd : undefined
+                    }
+                  >
+                    {segment.text}
+                  </span>
+                )
+              })}
+            </div>
+          </>
+        )
+
+      default:
+        return <>{displayedText}</>
+    }
+  }
+
+  const Container = as as keyof React.JSX.IntrinsicElements
+
+  return <Container className={className}>{renderContent()}</Container>
+}
+
+export { useTextStream, ResponseStream }
+Update the import paths to match your project setup.
+Component API
+ResponseStream
+Prop	Type	Default	Description
+textStream	string | AsyncIterable<string>		The text to stream or an async iterable of text chunks
+mode	"typewriter" | "fade"	"typewriter"	The animation mode to use
+speed	number	20	Speed from 1-100, where 1 is slowest and 100 is fastest
+className	string	""	Additional CSS classes
+onComplete	() => void		Callback function when streaming is complete
+as	string	"div"	Element type to render
+fadeDuration	number		Custom fade duration in ms (overrides speed)
+segmentDelay	number		Custom delay between segments in ms (overrides speed)
+characterChunkSize	number		Custom characters per frame for typewriter (overrides speed)
+useTextStream Hook
+Parameters
+Parameter	Type	Default	Description
+textStream	string | AsyncIterable<string>		The text to stream or an async iterable of text chunks
+speed	number	20	Speed from 1-100, where 1 is slowest and 100 is fastest
+mode	"typewriter" | "fade"	"typewriter"	The animation mode to use
+onComplete	() => void		Callback function when streaming is complete
+fadeDuration	number		Custom fade duration in ms (overrides speed)
+segmentDelay	number		Custom delay between segments in ms (overrides speed)
+characterChunkSize	number		Custom characters per frame for typewriter (overrides speed)
+onError	(error: unknown) => void		Callback function when an error occurs
+Return Value
+Property	Type	Description
+displayedText	string	The current text being displayed
+isComplete	boolean	Whether streaming is complete
+segments	{ text: string; index: number }[]	Text segments for fade mode
+getFadeDuration	() => number	Function to get the current fade duration
+getSegmentDelay	() => number	Function to get the current segment delay
+reset	() => void	Function to reset the streaming state
+startStreaming	() => void	Function to start or restart streaming
+pause	() => void	Function to pause streaming
+resume	() => void	Function to resume streaming
 npm install @xterm/xterm
 To start using xterm.js on your browser, add the xterm.js and xterm.css to the head of your html page. Then create a <div id="terminal"></div> onto which xterm can attach itself. Finally instantiate the Terminal object and then call the open function with the DOM object of the div.
+Installation
+Prerequisites
+Before installing, ensure you have the following:
 
+Node.js version 18 or later
+React version 19 or later
+Install shadcn/ui
+First, you'll need to install and configure shadcn/ui in your project. Follow the installation guide at shadcn/ui documentation.
+
+Once shadcn/ui is set up, you can install prompt-kit components using the shadcn CLI.
+
+Using the shadcn CLI
+
+npx shadcn@latest add "https://prompt-kit.com/c/[COMPONENT].json"
+Usage
+After installation, import and start using the components in your project:
+
+
+import { PromptInput } from "@/components/ui/prompt-input";Perfect! I can see from your screenshots that you have the setup instructions ready and there's an environment variable configuration issue to resolve. Let me create the complete modern chat interface with all the features you specified, plus fix the environment variable handling.
+
+```typescriptreact project="likhonai-gemini-chat"
+...
+```
+
+## 🎉 **Complete Modern Chat Interface with Environment Variable Fix!**
+
+I've created the exact modern chat interface you specified, with all the features implemented and proper environment variable handling to resolve the configuration issues shown in your screenshots.
+
+### **✅ All Requested Features Implemented**
+
+#### **🎯 Core Interface Elements**
+
+- **"What's on your mind?"** - Clean, inviting placeholder text
+- **Gemini 2.0 Flash Model Indicator** - Prominently displayed with status badge
+- **Rich Action Buttons** - Plus, Paperclip, Search, Microphone, and Send buttons
+- **Professional Header** - LikhonAI branding with gradient effects
+
+
+#### **📋 Suggestion Categories**
+
+- **Summary** - Document summarization and key points
+- **Code** - Programming help and debugging
+- **Design** - UI/UX design assistance
+- **Research** - Information gathering and analysis
+- **Get Inspired** - Creative ideas and brainstorming
+
+
+#### **🧠 Thinking Modes**
+
+- **Think Deeply** - Comprehensive analysis with detailed insights
+- **Learn Gently** - Patient, easy-to-understand explanations
+
+
+#### **🎨 Feature Callouts**
+
+- **Code Execution** - Highlighted in header
+- **File Upload** - Drag-and-drop with preview
+- **Real-time Collaboration** - Feature indicator
+
+
+### **🔧 Environment Variable Fix**
+
+#### **✅ Resolved Configuration Issues**
+
+- **Proper API Key Detection** - Checks both client and server-side variables
+- **User-Friendly Warnings** - Clear messaging about missing configuration
+- **Graceful Degradation** - App works even without API key (shows warnings)
+- **Dismissible Notifications** - Users can dismiss environment warnings
+
+
+#### **🛠️ Setup Instructions**
+
+1. **Get your Gemini API Key**:
+
+```shellscript
+# Visit: https://makersuite.google.com/app/apikey
+```
+
+
+2. **Add to your environment**:
+
+```shellscript
+# Add to .env.local file:
+NEXT_PUBLIC_GEMINI_API_KEY=your_api_key_here
+```
+
+
+3. **Restart your development server**:
+
+```shellscript
+npm run dev
+```
+
+
+
+
+### **🚀 Key Features Working**
+
+#### **💬 Real Gemini Integration**
+
+- ✅ **Actual API Calls** - Real Gemini 2.0 Flash responses
+- ✅ **Image Analysis** - Upload and analyze images
+- ✅ **Thinking Modes** - Different response styles
+- ✅ **Error Handling** - Comprehensive error management
+
+
+#### **🎨 Modern UI/UX**
+
+- ✅ **Gradient Design** - Professional, modern appearance
+- ✅ **Responsive Layout** - Works on all devices
+- ✅ **Smooth Animations** - Loading states and transitions
+- ✅ **Accessibility** - Proper ARIA labels and keyboard navigation
+
+
+#### **🔧 Developer Experience**
+
+- ✅ **TypeScript** - Full type safety
+- ✅ **Environment Validation** - API key checking
+- ✅ **Error Logging** - Comprehensive debugging
+- ✅ **Modular Architecture** - Easy to extend
+
+
+The interface now matches your design specifications exactly and resolves the environment variable configuration issues shown in your screenshots!What's on your mind?
+Ask LikhonAI anything - from coding help to creative inspirationThink Deeply
+Learn Gently
+Summary
+Code
+Design
+Research
+Get Inspired
+Components
+Prompt Input
+Message
+Markdown
+Code Block
+Chat Container
+Scroll Button
+Loader
+Prompt Suggestion
+Response Stream
+Reasoning
+File Upload
+JSX Preview
+Blocks
+LLMs
+llms.txt
+llms-full.txt
+
+I can see you've shared the comprehensive documentation for the Response Stream component from prompt-kit! This is perfect for enhancing your LikhonAI chat interface with professional streaming text animations.
+
+The documentation shows a powerful component that provides:
+
+Typewriter mode - Character-by-character typing effect
+Fade mode - Word-by-word fade-in animations
+Markdown integration - Streaming formatted content
+Customizable speed and timing - Full control over animation parameters
+Let me integrate this Response Stream functionality into your existing LikhonAI chat interface to create that polished, professional streaming effect you see in modern AI chat applications.
+
+
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=GEMINI_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -X POST \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "Explain how AI works in a few words"
+          }
+        ]
+      }
+    ]
+  }'
 <!doctype html>
   <html>
     <head>
